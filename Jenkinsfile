@@ -1,46 +1,58 @@
 pipeline {
-  agent any
+    agent any
 
-  environment {
-    IMAGE_NAME = "yourdockerhubusername/flask-mysql-app"
-    DOCKERHUB_CRED_ID = "dockerhub-creds"
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
+    environment {
+        IMAGE_NAME = "dhrithi3108/flask-mysql-app"
     }
 
-    stage('Build Image') {
-      steps {
-        sh "docker build -t ${IMAGE_NAME}:latest ."
-      }
-    }
-
-    stage('Test Container') {
-      steps {
-        sh """
-          docker run -d -p 5001:5000 --name test_app ${IMAGE_NAME}:latest
-          sleep 5
-          curl -f http://localhost:5001 || (echo 'App failed' && exit 1)
-          docker stop test_app
-          docker rm test_app
-        """
-      }
-    }
-
-    stage('Push to Docker Hub') {
-      steps {
-        withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CRED_ID}", usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-          sh """
-            echo $PASS | docker login -u $USER --password-stdin
-            docker push ${IMAGE_NAME}:latest
-            docker logout
-          """
+    stages {
+        stage('Clone Repository') {
+            steps {
+                git 'https://github.com/DHRITHI-K/flask-mysql-compose.git'
+            }
         }
-      }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh 'docker build -t $IMAGE_NAME:latest .'
+                }
+            }
+        }
+
+        stage('Run Container for Test') {
+            steps {
+                script {
+                    sh 'docker run -d -p 5000:5000 --name test_flask $IMAGE_NAME:latest'
+                    sh 'sleep 10'
+                    sh 'docker ps'
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh '''
+                            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                            docker push $IMAGE_NAME:latest
+                            docker logout
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Cleanup') {
+            steps {
+                script {
+                    sh '''
+                        docker stop test_flask || true
+                        docker rm test_flask || true
+                    '''
+                }
+            }
+        }
     }
-  }
 }
